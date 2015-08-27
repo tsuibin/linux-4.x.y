@@ -62,5 +62,9 @@ js-rtc-y = rtc.o
 
 obj-$(CONFIG_TILE_SROM)		+= tile-srom.o
 obj-$(CONFIG_XILLYBUS)		+= xillybus/
+#
+#
+#tsuibin add nano temperature modules
 obj-$(CONFIG_NANO_RELAY)	+= nano2451_relay.o
+obj-$(CONFIG_NANO_RELAY)	+= nano2451_temperature.o
 
