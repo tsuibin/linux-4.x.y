@@ -15,6 +15,11 @@ config DEVMEM
 	  memory.
 	  When in doubt, say "Y".
 
+config NANO_RELAY
+	tristate "nanoPI2451relay device GPG10"
+	depends on MACH_MINI2451
+	help
+
 config DEVKMEM
 	bool "/dev/kmem virtual device support"
 	default y
