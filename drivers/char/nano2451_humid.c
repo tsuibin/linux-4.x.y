@@ -21,12 +21,12 @@
 #include <plat/gpio-cfg.h>
 #include <mach/gpio-samsung.h>
 
-#define DEVICE_NAME "2451_temperature"
+#define DEVICE_NAME "2451_humid"
 
 //nanopi2451
 #define LGPIO S3C2410_GPG(11)   //模块GPIO脚
 
-static long temperature_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
+static long humid_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 {
         switch(cmd) {
         case 0:
@@ -42,7 +42,7 @@ static long temperature_ioctl(struct file *filp, unsigned int cmd, unsigned long
 }
 
 
-static int temperature_read(struct file *file, char * buffer, size_t count, loff_t * ppos)
+static int humid_read(struct file *file, char * buffer, size_t count, loff_t * ppos)
 {
         unsigned tmp;
         unsigned long err;
@@ -54,8 +54,8 @@ static int temperature_read(struct file *file, char * buffer, size_t count, loff
 
 
 static struct file_operations dev_fops={
-        unlocked_ioctl:temperature_ioctl,
-        read:temperature_read,
+        unlocked_ioctl:humid_ioctl,
+        read:humid_read,
 };
 
 
@@ -65,7 +65,7 @@ static struct miscdevice misc = {
         .fops = &dev_fops,
 };
 
-static int __init my_temperature_init(void)
+static int __init my_humid_init(void)
 {
         int ret;
 
@@ -78,13 +78,10 @@ static int __init my_temperature_init(void)
         return ret;
 }
 
-static void __exit my_temperature_exit(void)
+static void __exit my_humid_exit(void)
 {
         misc_deregister(&misc);
 }
 
-module_init(my_temperature_init);
-module_exit(my_temperature_exit);
-
-MODULE_LICENSE("GPL");
-MODULE_AUTHOR("o2ee");
+module_init(my_humid_init);
+module_exit(my_humid_exit);

@@ -66,5 +66,6 @@ obj-$(CONFIG_XILLYBUS)		+= xillybus/
 #
 #tsuibin add nano temperature modules
 obj-$(CONFIG_NANO_RELAY)	+= nano2451_relay.o
-obj-$(CONFIG_NANO_RELAY)	+= nano2451_temperature.o
+obj-$(CONFIG_NANO_TEMPERATURE)	+= nano2451_temperature.o
+obj-$(CONFIG_NANO_HUMID)	+= nano2451_humid.o
 
