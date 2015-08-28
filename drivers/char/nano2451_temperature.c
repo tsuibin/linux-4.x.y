@@ -1,90 +1,173 @@
+#include <linux/module.h>
+#include <linux/kernel.h>
+#include <linux/fs.h>
+#include <linux/init.h>
 #include <linux/miscdevice.h>
 #include <linux/delay.h>
-#include <linux/kernel.h>
-#include <linux/module.h>
-#include <linux/init.h>
-#include <linux/fs.h>
-#include <linux/types.h>
-#include <linux/delay.h>
-#include <linux/moduleparam.h>
-#include <linux/slab.h>
-#include <linux/errno.h>
-#include <linux/ioctl.h>
+#include <asm/irq.h>
+#include <mach/hardware.h>
 #include <linux/cdev.h>
-#include <linux/string.h>
-#include <linux/uaccess.h>
-#include <linux/list.h>
+#include <linux/device.h>
 
-#include <linux/clk.h>
-#include <linux/io.h>
 #include <linux/gpio.h>
 #include <plat/gpio-cfg.h>
 #include <mach/gpio-samsung.h>
 
-#define DEVICE_NAME "2451_temperature"
 
-//nanopi2451
-#define LGPIO S3C2410_GPG(11)   //模块GPIO脚
+#define DEVICE_NAME "TEM"
+#define tp_MAJOR 232
 
-static long temperature_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
-{
-        switch(cmd) {
-        case 0:
-                gpio_set_value(LGPIO, 0);
-                return 0;
-        case 1:
-                gpio_set_value(LGPIO, 1);
-                //printk (DEVICE_NAME": %d %d\n", arg, cmd);
-                return 0;
-        default:
-                return -EINVAL;
-        }
+#define DS18B20_DATA_PIN S3C2410_GPG(11)
+
+//static unsigned char data[2];
+void tm_18b20_reset(void) //18b20初始化
+{   
+	s3c_gpio_cfgpin(DS18B20_DATA_PIN, S3C_GPIO_SFN(1));//设置引脚为输出
+	gpio_set_value(DS18B20_DATA_PIN, 1);
+	udelay(5);
+	gpio_set_value(DS18B20_DATA_PIN, 0);//产生下降沿
+	udelay(600);//持续600us低电平
+	gpio_set_value(DS18B20_DATA_PIN, 1);//拉回高电平
+	udelay(60);//持续60us
+	s3c_gpio_cfgpin(DS18B20_DATA_PIN, S3C_GPIO_SFN(0));//设置引脚为输入
+}  
+
+void tm_18b20_writeb(unsigned char dat) //写一个字节函数
+{   
+	unsigned char j;
+	s3c_gpio_cfgpin(DS18B20_DATA_PIN, S3C_GPIO_SFN(1));//输出模式
+	
+	for (j = 1; j <= 8; j++){
+		gpio_set_value(DS18B20_DATA_PIN, 0);//产生下降延
+		udelay(1);
+		if((dat&0x01)==1)//根据dat的位值来设置数据线值
+		gpio_set_value(DS18B20_DATA_PIN, 1);
+		
+		udelay(60);
+		gpio_set_value(DS18B20_DATA_PIN, 1);//拉回高电平
+		udelay(10);
+		dat = dat >> 1;
+	}
+	
+	gpio_set_value(DS18B20_DATA_PIN, 1);//设置完后将端口拉回高电平
 }
 
 
-static int temperature_read(struct file *file, char * buffer, size_t count, loff_t * ppos)
-{
-        unsigned tmp;
-        unsigned long err;
-        tmp = gpio_get_value(LGPIO);
-        printk("==%d==\n",tmp);
-        err = copy_to_user(buffer, &tmp, 1);
-        return 1;
+unsigned char tm_18b20_readb(void) //读一个字节函数
+{   
+	unsigned char i,temp=0;   
+	
+	for (i = 1; i <= 8; i++){
+		s3c_gpio_cfgpin(DS18B20_DATA_PIN, S3C_GPIO_SFN(1));//设置端口为输出
+		gpio_set_value(DS18B20_DATA_PIN, 0);//产生下降延
+		udelay(1);
+		temp >>= 1;
+		gpio_set_value(DS18B20_DATA_PIN, 1);//拉回高电平
+		s3c_gpio_cfgpin(DS18B20_DATA_PIN, S3C_GPIO_SFN(0));//设置端口为输入
+		udelay(10);
+		if( gpio_get_value(DS18B20_DATA_PIN)) //如果为高电平
+		temp = temp | 0x80;
+		udelay(60);  
+	}  
+	return (temp);   
 }
 
+void DS18B20PRO(void)   
+{   
+	tm_18b20_reset(); //复位
+	udelay(420);
+	tm_18b20_writeb(0xcc); //跳过序列号命令   
+	tm_18b20_writeb(0x44); //发转换命令 44H,
+	
+	mdelay(750);
+	
+	tm_18b20_reset (); //复位
+	udelay(400);
+	tm_18b20_writeb(0xcc); //跳过序列号命令   
+	tm_18b20_writeb(0xbe); //发送读取命令
+	//data[0] = tm_18b20_readb(); //读取低位温度   
+	//data[1] = tm_18b20_readb(); //读取高位温度   
+}  
 
-static struct file_operations dev_fops={
-        unlocked_ioctl:temperature_ioctl,
-        read:temperature_read,
+static ssize_t s3c2451_18b20_read(struct file *filp, char __user *buf, size_t len, loff_t *off)
+{
+	unsigned char sign;
+	unsigned char TL, TH;
+	long temp;
+	short stemp;
+	DS18B20PRO();
+	TL = tm_18b20_readb();
+	TH = tm_18b20_readb();
+
+	if(TH > 7)
+	{
+		TH = ~TH;
+		TL = ~TL;
+		sign = 0;
+	}
+	else
+		sign = 1;
+	
+	temp = TH;
+	temp <<= 8;
+	temp += TL;
+	temp = temp*625/1000;
+	stemp = temp;
+	if(sign == 0)
+	{
+		stemp = -stemp;
+	}
+	buf[0] = stemp;
+	buf[1] = stemp>>8;
+//	printk("%x,%x\n",buf[0],buf[1]);
+	return 0;
+}
+
+static struct file_operations s3c2451_18b20_fops = {
+	.owner = THIS_MODULE,
+	.read = s3c2451_18b20_read,
 };
 
+static struct cdev cdev_18b20;
 
-static struct miscdevice misc = {
-        .minor = MISC_DYNAMIC_MINOR,
-        .name = DEVICE_NAME,
-        .fops = &dev_fops,
-};
-
-static int __init my_temperature_init(void)
+static int __init s3c2451_18b20_init(void)
 {
-        int ret;
-
-        s3c_gpio_cfgpin(LGPIO, S3C_GPIO_SFN(0));//设置输入
-//      s3c_gpio_setpull(LGPIO, S3C_GPIO_PULL_DOWN);//设置下拉
-
-        ret = misc_register(&misc);
-        printk (DEVICE_NAME"\tinitialized\n");
-
-        return ret;
+	int result;
+	dev_t devno = MKDEV(tp_MAJOR,0);
+	struct class *tem_class;
+	
+	result = register_chrdev_region(devno,1,DEVICE_NAME);
+	
+	if(result){
+		printk(KERN_NOTICE "Error %d register 18b20",result);
+		return result;
+	}
+	
+	cdev_init(&cdev_18b20,&s3c2451_18b20_fops);
+	
+	result = cdev_add(&cdev_18b20,devno,1);
+	if(result){
+		printk(KERN_NOTICE "Error %d adding 18b20",result);
+		return result;
+	}
+	
+	tem_class = class_create(THIS_MODULE, "tem_class");
+	device_create(tem_class, NULL, MKDEV(tp_MAJOR, 0), "ds18b20","DS18dev%d", 0);
+	
+	return 0;  
 }
 
-static void __exit my_temperature_exit(void)
+static void __exit s3c2451_18b20_exit(void)
 {
-        misc_deregister(&misc);
+	cdev_del(&cdev_18b20);
+	unregister_chrdev_region(MKDEV(tp_MAJOR,0),1);
 }
 
-module_init(my_temperature_init);
-module_exit(my_temperature_exit);
 
+module_init(s3c2451_18b20_init);
+module_exit(s3c2451_18b20_exit);
+
+MODULE_AUTHOR("CaZool");
 MODULE_LICENSE("GPL");
-MODULE_AUTHOR("o2ee");
+
+

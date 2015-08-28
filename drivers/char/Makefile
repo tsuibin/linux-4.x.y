@@ -68,4 +68,5 @@ obj-$(CONFIG_XILLYBUS)		+= xillybus/
 obj-$(CONFIG_NANO_RELAY)	+= nano2451_relay.o
 obj-$(CONFIG_NANO_TEMPERATURE)	+= nano2451_temperature.o
 obj-$(CONFIG_NANO_HUMID)	+= nano2451_humid.o
+obj-$(CONFIG_NANO_INFRARED)	+= nano2451_infrared.o
 

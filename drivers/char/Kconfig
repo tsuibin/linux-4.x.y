@@ -19,6 +19,12 @@ config NANO_TEMPERATURE
 	depends on MACH_MINI2451
 	help
 
+
+config NANO_INFRARED
+	tristate "nanoPI2451 infrared device GPG11"
+	depends on MACH_MINI2451
+	help
+
 source "drivers/tty/Kconfig"
 
 config DEVMEM
